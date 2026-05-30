@@ -103,15 +103,22 @@ pub fn derive_reborrow_copy(input: proc_macro::TokenStream) -> proc_macro::Token
 pub fn derive_reborrow(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as DeriveInput);
 
-    let const_name = input
-        .attrs
-        .iter()
-        .find(|attr| attr.path().is_ident("Const"))
-        .unwrap_or_else(|| panic!("Const reborrowed type must be specified."));
+    let const_attr = match input.attrs.iter().find(|attr| attr.path().is_ident("Const")) {
+        Some(attr) => attr,
+        None => {
+            return syn::Error::new_spanned(
+                &input.ident,
+                "Const reborrowed type must be specified, e.g. `#[Const(MyConstType)]`.",
+            )
+            .into_compile_error()
+            .into();
+        }
+    };
 
-    let const_name: syn::Type = const_name
-        .parse_args()
-        .expect("Const attribute must contain a type, e.g. `#[Const(MyConstType)]`.");
+    let const_name: syn::Type = match const_attr.parse_args() {
+        Ok(ty) => ty,
+        Err(err) => return err.into_compile_error().into(),
+    };
 
     let name = &input.ident;
 
@@ -174,8 +181,22 @@ pub fn derive_reborrow(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
                     quote! { #const_name:: #target_ty_generics },
                 ),
             },
-            syn::Data::Enum(_) => panic!("reborrow-derive does not support enums."),
-            syn::Data::Union(_) => panic!("reborrow-derive does not support unions."),
+            syn::Data::Enum(e) => {
+                return syn::Error::new_spanned(
+                    e.enum_token,
+                    "reborrow-derive does not support enums.",
+                )
+                .into_compile_error()
+                .into();
+            }
+            syn::Data::Union(u) => {
+                return syn::Error::new_spanned(
+                    u.union_token,
+                    "reborrow-derive does not support unions.",
+                )
+                .into_compile_error()
+                .into();
+            }
         }
     };
 
