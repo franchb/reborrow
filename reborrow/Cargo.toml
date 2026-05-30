@@ -1,7 +1,7 @@
 [package]
 name = "reborrow"
 version = "0.5.5"
-edition = "2021"
+edition = "2024"
 authors = ["sarah <>"]
 description = "Emulate reborrowing for user types."
 readme = "../README.md"

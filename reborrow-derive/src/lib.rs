@@ -1,5 +1,5 @@
 use quote::quote;
-use syn::{DeriveInput, GenericParam, Lifetime, LifetimeDef};
+use syn::{DeriveInput, GenericParam, Lifetime, LifetimeParam};
 
 #[proc_macro_derive(ReborrowCopyTraits)]
 pub fn derive_reborrow_copy(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -7,7 +7,7 @@ pub fn derive_reborrow_copy(input: proc_macro::TokenStream) -> proc_macro::Token
 
     let name = &input.ident;
 
-    let reborrowed_lifetime = &LifetimeDef::new(Lifetime::new(
+    let reborrowed_lifetime = &LifetimeParam::new(Lifetime::new(
         "'__reborrow_lifetime",
         proc_macro2::Span::call_site(),
     ));
@@ -106,26 +106,16 @@ pub fn derive_reborrow(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
     let const_name = input
         .attrs
         .iter()
-        .find(|&attr| {
-            let segments = &attr.path.segments;
-            if let Some(syn::PathSegment {
-                ident,
-                arguments: syn::PathArguments::None,
-            }) = segments.first()
-            {
-                ident.to_string() == "Const"
-            } else {
-                false
-            }
-        })
+        .find(|attr| attr.path().is_ident("Const"))
         .unwrap_or_else(|| panic!("Const reborrowed type must be specified."));
 
-    let const_name = const_name.tokens.clone();
-    let const_name = *syn::parse2::<syn::TypeParen>(const_name).unwrap().elem;
+    let const_name: syn::Type = const_name
+        .parse_args()
+        .expect("Const attribute must contain a type, e.g. `#[Const(MyConstType)]`.");
 
     let name = &input.ident;
 
-    let reborrowed_lifetime = &LifetimeDef::new(Lifetime::new(
+    let reborrowed_lifetime = &LifetimeParam::new(Lifetime::new(
         "'__reborrow_lifetime",
         proc_macro2::Span::call_site(),
     ));
@@ -271,22 +261,7 @@ fn reborrow_exprs(
     proc_macro2::TokenStream,
     proc_macro2::TokenStream,
 ) {
-    let is_reborrowable = f
-        .attrs
-        .iter()
-        .find(|&attr| {
-            let segments = &attr.path.segments;
-            if let Some(syn::PathSegment {
-                ident,
-                arguments: syn::PathArguments::None,
-            }) = segments.first()
-            {
-                ident.to_string() == "reborrow"
-            } else {
-                false
-            }
-        })
-        .is_some();
+    let is_reborrowable = f.attrs.iter().any(|attr| attr.path().is_ident("reborrow"));
 
     let idx = syn::Index::from(idx);
 
