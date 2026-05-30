@@ -1,5 +1,5 @@
 use quote::quote;
-use syn::{DeriveInput, GenericParam, Lifetime, LifetimeDef};
+use syn::{DeriveInput, GenericParam, Lifetime, LifetimeParam};
 
 #[proc_macro_derive(ReborrowCopyTraits)]
 pub fn derive_reborrow_copy(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -7,7 +7,7 @@ pub fn derive_reborrow_copy(input: proc_macro::TokenStream) -> proc_macro::Token
 
     let name = &input.ident;
 
-    let reborrowed_lifetime = &LifetimeDef::new(Lifetime::new(
+    let reborrowed_lifetime = &LifetimeParam::new(Lifetime::new(
         "'__reborrow_lifetime",
         proc_macro2::Span::call_site(),
     ));
@@ -103,29 +103,30 @@ pub fn derive_reborrow_copy(input: proc_macro::TokenStream) -> proc_macro::Token
 pub fn derive_reborrow(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as DeriveInput);
 
-    let const_name = input
+    let const_attr = match input
         .attrs
         .iter()
-        .find(|&attr| {
-            let segments = &attr.path.segments;
-            if let Some(syn::PathSegment {
-                ident,
-                arguments: syn::PathArguments::None,
-            }) = segments.first()
-            {
-                ident.to_string() == "Const"
-            } else {
-                false
-            }
-        })
-        .unwrap_or_else(|| panic!("Const reborrowed type must be specified."));
+        .find(|attr| attr.path().is_ident("Const"))
+    {
+        Some(attr) => attr,
+        None => {
+            return syn::Error::new_spanned(
+                &input.ident,
+                "Const reborrowed type must be specified, e.g. `#[Const(MyConstType)]`.",
+            )
+            .into_compile_error()
+            .into();
+        }
+    };
 
-    let const_name = const_name.tokens.clone();
-    let const_name = *syn::parse2::<syn::TypeParen>(const_name).unwrap().elem;
+    let const_name: syn::Type = match const_attr.parse_args() {
+        Ok(ty) => ty,
+        Err(err) => return err.into_compile_error().into(),
+    };
 
     let name = &input.ident;
 
-    let reborrowed_lifetime = &LifetimeDef::new(Lifetime::new(
+    let reborrowed_lifetime = &LifetimeParam::new(Lifetime::new(
         "'__reborrow_lifetime",
         proc_macro2::Span::call_site(),
     ));
@@ -184,8 +185,22 @@ pub fn derive_reborrow(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
                     quote! { #const_name:: #target_ty_generics },
                 ),
             },
-            syn::Data::Enum(_) => panic!("reborrow-derive does not support enums."),
-            syn::Data::Union(_) => panic!("reborrow-derive does not support unions."),
+            syn::Data::Enum(e) => {
+                return syn::Error::new_spanned(
+                    e.enum_token,
+                    "reborrow-derive does not support enums.",
+                )
+                .into_compile_error()
+                .into();
+            }
+            syn::Data::Union(u) => {
+                return syn::Error::new_spanned(
+                    u.union_token,
+                    "reborrow-derive does not support unions.",
+                )
+                .into_compile_error()
+                .into();
+            }
         }
     };
 
@@ -271,22 +286,7 @@ fn reborrow_exprs(
     proc_macro2::TokenStream,
     proc_macro2::TokenStream,
 ) {
-    let is_reborrowable = f
-        .attrs
-        .iter()
-        .find(|&attr| {
-            let segments = &attr.path.segments;
-            if let Some(syn::PathSegment {
-                ident,
-                arguments: syn::PathArguments::None,
-            }) = segments.first()
-            {
-                ident.to_string() == "reborrow"
-            } else {
-                false
-            }
-        })
-        .is_some();
+    let is_reborrowable = f.attrs.iter().any(|attr| attr.path().is_ident("reborrow"));
 
     let idx = syn::Index::from(idx);
 
