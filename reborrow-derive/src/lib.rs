@@ -103,7 +103,11 @@ pub fn derive_reborrow_copy(input: proc_macro::TokenStream) -> proc_macro::Token
 pub fn derive_reborrow(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as DeriveInput);
 
-    let const_attr = match input.attrs.iter().find(|attr| attr.path().is_ident("Const")) {
+    let const_attr = match input
+        .attrs
+        .iter()
+        .find(|attr| attr.path().is_ident("Const"))
+    {
         Some(attr) => attr,
         None => {
             return syn::Error::new_spanned(
